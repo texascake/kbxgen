@@ -1,0 +1,64 @@
+name: Generate Keybox XML
+
+on:
+  workflow_dispatch:  # Manual trigger
+  push:
+    branches: [ main ]
+
+jobs:
+  generate-keybox:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y git openssl
+        pip install cryptography lxml
+
+    - name: Clone keybox generator
+      run: |
+        git clone https://github.com/LRFP-Team/keyboxGenerator.git
+        cd keyboxGenerator
+
+    - name: Generate keybox.xml
+      run: |
+        cd keyboxGenerator
+        # Adjust based on specific generator requirements
+        python3 generate_keybox.py --output keybox.xml
+        # Or if it requires private keys/certificates:
+        # python3 generate_keybox.py --private-key privkey.pem --cert-chain chain.pem
+
+    - name: Verify keybox format
+      run: |
+        xmllint --noout keyboxGenerator/keybox.xml
+        echo "Keybox XML validation passed"
+
+    - name: Create release
+      uses: softprops/action-gh-release@v2
+      if: github.event_name == 'workflow_dispatch'
+      with:
+        tag_name: keybox-${{ github.run_number }}
+        name: Keybox XML Release ${{ github.run_number }}
+        files: keyboxGenerator/keybox.xml
+        body: |
+          Auto-generated keybox.xml for TrickyStore
+          - Generated: ${{ github.event.head_commit.message }}
+          - SHA256: $(sha256sum keyboxGenerator/keybox.xml | cut -d' ' -f1)
+        draft: false
+        prerelease: false
+
+    - name: Upload keybox as artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: keybox-xml
+        path: keyboxGenerator/keybox.xml
+        retention-days: 30
