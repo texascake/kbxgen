@@ -1,6 +1,6 @@
 name: Generate Encrypted Keybox XML
 on:
-  workflow_dispatch:  # Manual trigger - creates "Run workflow" button
+  workflow_dispatch:
   push:
     branches: [ main ]
 
@@ -28,11 +28,14 @@ jobs:
       run: |
         git clone https://github.com/LRFP-Team/keyboxGenerator.git
         cd keyboxGenerator
-        # Try scripts with fallback
-        if python3 keyboxGenerator.py 2>/dev/null || python3 keyboxGenerator_v2.0.py 2>/dev/null; then
-          echo "✅ Keybox generated successfully"
+        
+        # Fixed conditional logic - proper shell syntax
+        if python3 keyboxGenerator.py; then
+          echo "✅ keyboxGenerator.py succeeded"
+        elif python3 keyboxGenerator_v2.0.py; then
+          echo "✅ keyboxGenerator_v2.0.py succeeded"
         else
-          echo "⚠️ Using template keybox.xml"
+          echo "⚠️ Scripts failed, using template"
           cat > keybox.xml << 'EOF'
 <?xml version='1.0' encoding='UTF-8' standalone='yes' ?>
 <KeyBox version="2.0">
@@ -41,14 +44,16 @@ jobs:
 </KeyBox>
 EOF
         fi
-        ls -la keybox.xml
+        
+        # Verify output
+        ls -la keybox.xml || echo "❌ No keybox.xml created"
 
     - name: Create encrypted ZIP
       env:
         ZIP_PASSWORD: ${{ secrets.KEYBOX_ZIP_PASSWORD }}
       run: |
         if [ -z "$ZIP_PASSWORD" ]; then
-          echo "❌ Missing KEYBOX_ZIP_PASSWORD secret"
+          echo "❌ Missing KEYBOX_ZIP_PASSWORD"
           exit 1
         fi
         cd keyboxGenerator
@@ -61,13 +66,10 @@ EOF
       with:
         name: keybox-encrypted
         path: keybox-encrypted.zip
-        retention-days: 30
 
-    - name: Create release (manual trigger only)
+    - name: Create release
       if: github.event_name == 'workflow_dispatch'
       uses: softprops/action-gh-release@v2
       with:
         tag_name: v${{ github.run_number }}
-        name: "Keybox v${{ github.run_number }}"
         files: keybox-encrypted.zip
-        generate_release_notes: true
