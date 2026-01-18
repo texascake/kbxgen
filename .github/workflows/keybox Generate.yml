@@ -16,50 +16,40 @@ jobs:
       with:
         python-version: '3.11'
 
-    - name: Install system dependencies
+    - name: Install dependencies
       run: |
-        sudo apt-get update
+        sudo apt-get update -qq
         sudo apt-get install -y openssl libssl-dev
-
-    - name: Install Python dependencies
-      run: pip install cryptography lxml
+        pip install cryptography lxml
 
     - name: Clone & generate keybox
       run: |
         git clone https://github.com/LRFP-Team/keyboxGenerator.git
         cd keyboxGenerator
         
-        # Fixed conditional logic - proper shell syntax
-        if python3 keyboxGenerator.py; then
-          echo "✅ keyboxGenerator.py succeeded"
-        elif python3 keyboxGenerator_v2.0.py; then
-          echo "✅ keyboxGenerator_v2.0.py succeeded"
-        else
-          echo "⚠️ Scripts failed, using template"
-          cat > keybox.xml << 'EOF'
-<?xml version='1.0' encoding='UTF-8' standalone='yes' ?>
-<KeyBox version="2.0">
-  <VerifiedBootKeys>
-  </VerifiedBootKeys>
-</KeyBox>
-EOF
+        # Simplified logic - no complex conditionals
+        python3 keyboxGenerator.py || python3 keyboxGenerator_v2.0.py || true
+        
+        # Create template if missing (AVOIDS XML in YAML)
+        if [ ! -f keybox.xml ]; then
+          echo '<?xml version="1.0" encoding="UTF-8" standalone="yes" ?>' > keybox.xml
+          echo '<KeyBox version="2.0">' >> keybox.xml
+          echo '  <VerifiedBootKeys>' >> keybox.xml
+          echo '  </VerifiedBootKeys>' >> keybox.xml
+          echo '</KeyBox>' >> keybox.xml
         fi
         
-        # Verify output
-        ls -la keybox.xml || echo "❌ No keybox.xml created"
+        ls -la keybox.xml
 
-    - name: Create encrypted ZIP
+    - name: Encrypt ZIP
       env:
         ZIP_PASSWORD: ${{ secrets.KEYBOX_ZIP_PASSWORD }}
       run: |
-        if [ -z "$ZIP_PASSWORD" ]; then
-          echo "❌ Missing KEYBOX_ZIP_PASSWORD"
-          exit 1
-        fi
+        [ -n "$ZIP_PASSWORD" ] || exit 1
         cd keyboxGenerator
         zip -P "$ZIP_PASSWORD" ../keybox-encrypted.zip keybox.xml
         cd ..
-        echo "✅ SHA256: $(sha256sum keybox-encrypted.zip | cut -d' ' -f1)"
+        echo "SHA256: $(sha256sum keybox-encrypted.zip | cut -d' ' -f1)"
 
     - name: Upload artifact
       uses: actions/upload-artifact@v4
