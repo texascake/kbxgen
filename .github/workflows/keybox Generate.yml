@@ -1,6 +1,6 @@
 name: Generate Encrypted Keybox XML
 on:
-  workflow_dispatch:
+  workflow_dispatch:  # Manual trigger only
   push:
     branches: [ main ]
 
@@ -22,44 +22,26 @@ jobs:
         sudo apt-get install -y openssl libssl-dev
         pip install cryptography lxml
 
-    - name: Clone & generate keybox
+    - name: Generate keybox
       run: |
         git clone https://github.com/LRFP-Team/keyboxGenerator.git
         cd keyboxGenerator
-        
-        # Simplified logic - no complex conditionals
-        python3 keyboxGenerator.py || python3 keyboxGenerator_v2.0.py || true
-        
-        # Create template if missing (AVOIDS XML in YAML)
-        if [ ! -f keybox.xml ]; then
-          echo '<?xml version="1.0" encoding="UTF-8" standalone="yes" ?>' > keybox.xml
-          echo '<KeyBox version="2.0">' >> keybox.xml
-          echo '  <VerifiedBootKeys>' >> keybox.xml
-          echo '  </VerifiedBootKeys>' >> keybox.xml
-          echo '</KeyBox>' >> keybox.xml
-        fi
-        
+        python3 keyboxGenerator.py || true
         ls -la keybox.xml
 
     - name: Encrypt ZIP
       env:
         ZIP_PASSWORD: ${{ secrets.KEYBOX_ZIP_PASSWORD }}
       run: |
-        [ -n "$ZIP_PASSWORD" ] || exit 1
         cd keyboxGenerator
         zip -P "$ZIP_PASSWORD" ../keybox-encrypted.zip keybox.xml
         cd ..
-        echo "SHA256: $(sha256sum keybox-encrypted.zip | cut -d' ' -f1)"
+        echo "✅ SHA256: $(sha256sum keybox-encrypted.zip | cut -d' ' -f1)"
+        echo "✅ Size: $(du -h keybox-encrypted.zip)"
 
     - name: Upload artifact
       uses: actions/upload-artifact@v4
       with:
         name: keybox-encrypted
         path: keybox-encrypted.zip
-
-    - name: Create release
-      if: github.event_name == 'workflow_dispatch'
-      uses: softprops/action-gh-release@v2
-      with:
-        tag_name: v${{ github.run_number }}
-        files: keybox-encrypted.zip
+        retention-days: 30
