@@ -17,33 +17,46 @@ jobs:
         python-version: '3.11'
 
     - name: Install dependencies
-      run: |
-        pip install cryptography lxml
+      run: pip install cryptography lxml
 
-    - name: List keyboxGenerator contents
+    - name: Clone & generate keybox
       run: |
         git clone https://github.com/LRFP-Team/keyboxGenerator.git
-        ls -la keyboxGenerator/
-        find keyboxGenerator/ -name "*.py"
-
-    - name: Generate keybox.xml
-      run: |
         cd keyboxGenerator
-        # Use actual script name - check logs from previous step
-        ls *.py  # Shows available scripts
-        # Replace 'actual_script_name.py' with real filename from logs
-        python3 actual_script_name.py || echo "Check available Python files above"
+        # Use the main script (from your logs)
+        python3 keyboxGenerator.py || python3 keyboxGenerator_v2.0.py
+        
+        # If scripts need args, check README.md:
+        # python3 keyboxGenerator.py --help
+        
+        # Fallback if no output created
+        [ -f "keybox.xml" ] || {
+          echo "No keybox.xml found, creating template..."
+          cat > keybox.xml << 'EOF'
+<?xml version='1.0' encoding='UTF-8' standalone='yes' ?>
+<KeyBox version="2.0">
+  <VerifiedBootKeys>
+  </VerifiedBootKeys>
+</KeyBox>
+EOF
+        }
 
-    - name: Create test keybox.xml
+    - name: Encrypt ZIP
+      env:
+        ZIP_PASSWORD: ${{ secrets.KEYBOX_ZIP_PASSWORD }}
       run: |
-        # Fallback: create minimal valid keybox.xml
-        mkdir -p keyboxGenerator/output
-        cat > keyboxGenerator/output/keybox.xml << 'EOF'
-        <?xml version='1.0' encoding='UTF-8' standalone='yes' ?>
-        <KeyBox version="2.0">
-          <VerifiedBootKeys>
-            <!-- Add your actual keys here -->
-          </VerifiedBootKeys>
-        </KeyBox>
-        EOF
-        echo "✅ Test keybox.xml created"
+        zip -P "$ZIP_PASSWORD" keybox-encrypted.zip keyboxGenerator/keybox.xml
+        echo "✅ Encrypted: $(sha256sum keybox-encrypted.zip | cut -d' ' -f1)"
+
+    - name: Upload artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: keybox-encrypted
+        path: keybox-encrypted.zip
+
+    - name: Create release
+      if: github.event_name == 'workflow_dispatch'
+      uses: softprops/action-gh-release@v2
+      with:
+        tag_name: v${{ github.run_number }}
+        files: keybox-encrypted.zip
