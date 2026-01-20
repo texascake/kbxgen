@@ -2,7 +2,7 @@ name: Generate Encrypted Keybox XML
 on:
   workflow_dispatch:  # Manual trigger only
   push:
-    branches: [ main ]
+    branches: [ master ]
 
 jobs:
   generate-keybox:
